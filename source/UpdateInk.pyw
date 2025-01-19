@@ -1,30 +1,39 @@
+from datetime import datetime
 import time
 import configparser
 import os
 import requests
+import pytz
+import random
 # import inquirer
 import zmkx
 import sched
 from psutil import *
 from PIL import Image, ImageDraw, ImageFont
+import xml.etree.ElementTree as ET
 
 # 静态的路径名、图片与其它变量预先加载，避免反复读盘。
 font12 = ImageFont.truetype('img/fusion-pixel-12px-monospaced-zh_hans.ttf', 12)
-# font16 = ImageFont.truetype('img/fusion-pixel-8px-monospaced-zh_hans.ttf', 16)
+font16 = ImageFont.truetype('img/fusion-pixel-10px-monospaced-zh_hans.ttf', 16)
 font20 = ImageFont.truetype('img/fusion-pixel-10px-monospaced-zh_hans.ttf', 20)
 # font24 = ImageFont.truetype('img/fusion-pixel-12px-monospaced-zh_hans.ttf', 24)
 font48 = ImageFont.truetype('img/fusion-pixel-10px-monospaced-zh_hans.ttf', 48)
 # font60 = ImageFont.truetype('img/fusion-pixel-10px-monospaced-zh_hans.ttf', 60)
+
+font12b = ImageFont.truetype('img/LiberationMono-Bold.ttf', 12)
+font16b = ImageFont.truetype('img/LiberationMono-Bold.ttf', 16)
+font20b = ImageFont.truetype('img/LiberationMono-Bold.ttf', 20)
+
 cpu_path = "./img/cpu.png"
 mem_path = "./img/men.png"
 image_path = "./img/"
 line_path = "./img/line.png"
-chinese_path = "./img/"
 weather_icon_path = "./icon/"
 nowtemp_path = "./img/nowtemp.png"
 wave_path = "./img/wave.png"
 cpu_icon = Image.open(cpu_path)
 mem_icon = Image.open(mem_path)
+metar_bg_path = "./img/metar_bg.png"
 scheduler = sched.scheduler(time.time, time.sleep)
 
 
@@ -79,6 +88,105 @@ def draw_text_on_canvas(text: str, canvas: Image, font=None, x_offset=0, y_offse
                   text, font=font, fill=fill, align='center', **kwargs)
     return canvas
 
+def get_metar_xml() -> dict:
+    """
+    Parse METAR XML response and return a dictionary with station_id as the key and other fields as values.
+
+    Args:
+        xml_string (str): The XML response as a string.
+
+    Returns:
+        dict: A dictionary with station_id as the key and a dictionary of other fields as values.
+    """
+    config = configparser.ConfigParser()
+    config_file = os.path.join(os.getcwd(), 'config.ini')
+    config.read(config_file)
+
+    params = {
+        'ids': 'KBWI,KIAD,KDCA',
+        'format': 'xml',
+        'taf': 'false',
+        'hours': 2,
+    }
+    session = requests.Session()
+    aviation_weather_base_url = "https://aviationweather.gov/api/data/metar"
+
+    session = requests.Session()
+    response = session.get(aviation_weather_base_url, params=params)
+    response.raise_for_status()
+
+    # Initialize dictionary
+    result = parse_metar_response(response.text)
+
+    return result
+
+def parse_metar_response(xml_string):
+    """
+    Parse METAR XML response and return a dictionary with station_id as the key and other fields as values.
+
+    Args:
+        xml_string (str): The XML response as a string.
+
+    Returns:
+        dict: A dictionary with station_id as the key and a dictionary of other fields as values.
+    """
+    # Parse the XML
+    root = ET.fromstring(xml_string)
+
+    # Initialize dictionary
+    result = {}
+
+    # Iterate through all METAR elements
+    for metar_element in root.findall(".//METAR"):
+        # Extract key (station_id)
+        station_id = metar_element.findtext("station_id")
+        obs_time = metar_element.findtext("observation_time")
+        obs_time_str = None
+        if obs_time:
+            dt = datetime.fromisoformat(obs_time.replace("Z", "+00:00"))
+            obs_time_str = dt.strftime("%d%H%MZ")
+
+        wdir = metar_element.findtext("wind_dir_degrees")
+        wspd = metar_element.findtext("wind_speed_kt")
+        wgst = metar_element.findtext("wind_gust_kt")
+        wind_info = f"{wdir}/{wspd}" if wdir is not None and wspd is not None else None
+        if wind_info is not None:
+            if wgst is not None:
+                wind_info += f"G{wgst}kts"
+            else:
+                wind_info += "kts"
+
+        sky_conditions = []
+        for condition in metar_element.findall("sky_condition"):
+            sky_cover = condition.get("sky_cover")
+            cloud_base = condition.get("cloud_base_ft_agl")
+            if cloud_base:
+                sky_conditions.append(f"{sky_cover}{cloud_base}")
+            else:
+                sky_conditions.append(sky_cover)
+        clouds =  " ".join(sky_conditions)
+        # Extract relevant fields
+        metar_data = {
+            "raw_text": metar_element.findtext("raw_text"),
+            "observation_time": obs_time_str,
+            "temp_c": metar_element.findtext("temp_c"),
+            "dewpoint_c": metar_element.findtext("dewpoint_c"),
+            "wind": wind_info,
+            "visibility_statute_mi": metar_element.findtext("visibility_statute_mi") + " ms",
+            "altim_in_hg": metar_element.findtext("altim_in_hg"),
+            "sea_level_pressure_mb": metar_element.findtext("sea_level_pressure_mb"),
+            "auto_station": metar_element.find("quality_control_flags/auto_station").text == "TRUE",
+            "flight_category": metar_element.findtext("flight_category"),
+            "metar_type": metar_element.findtext("metar_type"),
+            "elevation_m": metar_element.findtext("elevation_m"),
+            "cloud": clouds
+        }
+
+        # Assign to result
+        if station_id:
+            result[station_id] = metar_data
+    print(f"xml metar data: {result}")
+    return result
 
 def get_weather_info() -> dict:
     """
@@ -313,12 +421,10 @@ def draw_weather_canvas(x_offset=0, y_offset=186, refresh_interval=30*60) -> Non
     canvas.paste(nowtemp_image, (8, 80))
     wave_image = Image.open(wave_path)
     canvas.paste(wave_image, (58, 69))
-
+    
     update_eink(canvas, x=x_offset, y=y_offset, partial=False)
 
-    draw_hw_icons()
     scheduler.enter(refresh_interval, 1, draw_weather_canvas)
-
 
 def draw_hw_icons(x_offset=0, y_offset=0):
     """
@@ -331,6 +437,43 @@ def draw_hw_icons(x_offset=0, y_offset=0):
     canvas.paste(mem_icon, (0, v_gap+26))
     update_eink(canvas, x=x_offset, y=y_offset, partial=True)
 
+def format_temp(value):
+                    if value is not None and abs(value) < 10 and value != 0:
+                        return f"{value:.1f}"
+                    return f"{int(value)}" if value is not None else None
+
+def draw_metar_canvas(x_offset=0, y_offset=0):
+    """
+    Display the METAR information background
+    """
+    canvas = Image.new('1', (128, 128))
+    metar_bg = Image.open(metar_bg_path)
+    canvas.paste(metar_bg, (0, 4))
+    img_draw = ImageDraw.Draw(canvas)
+    metar_info = get_metar_xml()
+
+    icao = random.choice(list(metar_info.keys()))
+    metar = metar_info[icao]
+    obs_time = metar['observation_time']
+    wind = metar['wind']
+    temp = metar['temp_c']
+    dewp = metar['dewpoint_c']
+    altim = metar['altim_in_hg']
+    visib = metar['visibility_statute_mi']
+    category = metar['flight_category']
+    cloud = metar['cloud']
+    img_draw.text((4,5), icao, font=font16b, fill=0x00, align='center') 
+    img_draw.text((72,10), obs_time, font=font12b, fill=0x00, align='center') 
+    img_draw.text((25,33), wind, font=font16b, fill=0x00, align='center')
+    img_draw.text((16, 60), temp, font=font12b, fill=0x00, align='center')
+    img_draw.text((51, 60), dewp, font=font12b, fill=0x00, align='center')
+    img_draw.text((98, 60), altim, font=font12b, fill=0x00, align='center')
+    img_draw.text((25, 86), visib, font=font12b, fill=0x00, align='center')
+    img_draw.text((90, 82), category, font=font16b, fill=0x00, align='center')
+    img_draw.text((25, 110), cloud, font=font12b, fill=0x00, align='center')
+
+    update_eink(canvas, x=x_offset, y=y_offset, partial=True)
+    scheduler.enter(60*5, 1, draw_metar_canvas)
 
 def draw_clock_canvas(x_offset=0, y_offset=80):
     """
@@ -345,9 +488,7 @@ def draw_clock_canvas(x_offset=0, y_offset=80):
     hour = time.strftime("%H", now)
     minute = time.strftime("%M", now)
     print(now)
-    # print(f'更新文字: {text}')
-    # img_draw.text((6, 0),
-    #               hour+':'+minute, font=font(12,48), fill=0x00, align='center',stroke_width=1)
+    
     draw_text_on_canvas(hour+':'+minute, canvas,
                         font=font48, x_offset=2, stroke_width=1)
     update_eink(canvas, x=x_offset, y=y_offset, partial=False)
@@ -389,8 +530,9 @@ def clean_screen(x=128, y=296, x_offset=0, y_offset=0):
 
 if __name__ == '__main__':
     clean_screen()
-    draw_calendar_canvas(0,140)
+    draw_metar_canvas()
+    draw_calendar_canvas(0,130)
     draw_weather_canvas(0,185)
-    draw_clock_canvas(0,80)
-    draw_hw_canvas()
+    # draw_clock_canvas(0,80)
+    # draw_hw_canvas()
     scheduler.run()
