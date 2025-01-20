@@ -3,9 +3,9 @@
 
 a = Analysis(
     ['source\\UpdateInk.pyw'],
-    pathex=['..'],
+    pathex=['.'],
     binaries=[],
-    datas=[('icon', 'icon'), ('img', 'img')],
+    datas=[('icon','icon'),('img','img')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -37,6 +37,9 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
+    [
+        ('config.ini', 'config.ini', 'DATA'),
+    ],
     strip=False,
     upx=True,
     upx_exclude=[],

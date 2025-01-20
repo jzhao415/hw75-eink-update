@@ -11,31 +11,40 @@ import sched
 from psutil import *
 from PIL import Image, ImageDraw, ImageFont
 import xml.etree.ElementTree as ET
+import sys
 
-# 静态的路径名、图片与其它变量预先加载，避免反复读盘。
-font12 = ImageFont.truetype('img/fusion-pixel-12px-monospaced-zh_hans.ttf', 12)
-font16 = ImageFont.truetype('img/fusion-pixel-10px-monospaced-zh_hans.ttf', 16)
-font20 = ImageFont.truetype('img/fusion-pixel-10px-monospaced-zh_hans.ttf', 20)
-# font24 = ImageFont.truetype('img/fusion-pixel-12px-monospaced-zh_hans.ttf', 24)
-font48 = ImageFont.truetype('img/fusion-pixel-10px-monospaced-zh_hans.ttf', 48)
-# font60 = ImageFont.truetype('img/fusion-pixel-10px-monospaced-zh_hans.ttf', 60)
+base_dir = None
+# Get the directory where the script is located base on running mode
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    print('running in a PyInstaller bundle')
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+else:
+    print('running in a normal Python process')
+    base_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
 
-font12b = ImageFont.truetype('img/LiberationMono-Bold.ttf', 12)
-font16b = ImageFont.truetype('img/LiberationMono-Bold.ttf', 16)
-font20b = ImageFont.truetype('img/LiberationMono-Bold.ttf', 20)
+# Paths to resources
+img_dir = os.path.join(base_dir, 'img')
+icon_dir = os.path.join(base_dir, 'icon')
 
-cpu_path = "./img/cpu.png"
-mem_path = "./img/men.png"
-image_path = "./img/"
-line_path = "./img/line.png"
-weather_icon_path = "./icon/"
-nowtemp_path = "./img/nowtemp.png"
-wave_path = "./img/wave.png"
-cpu_icon = Image.open(cpu_path)
-mem_icon = Image.open(mem_path)
-metar_bg_path = "./img/metar_bg.png"
+# Fonts
+font12 = ImageFont.truetype(os.path.join(img_dir, 'fusion-pixel-12px-monospaced-zh_hans.ttf'), 12)
+font16 = ImageFont.truetype(os.path.join(img_dir, 'fusion-pixel-10px-monospaced-zh_hans.ttf'), 16)
+font20 = ImageFont.truetype(os.path.join(img_dir, 'fusion-pixel-10px-monospaced-zh_hans.ttf'), 20)
+font48 = ImageFont.truetype(os.path.join(img_dir, 'fusion-pixel-10px-monospaced-zh_hans.ttf'), 48)
+
+font12b = ImageFont.truetype(os.path.join(img_dir, 'LiberationMono-Bold.ttf'), 12)
+font16b = ImageFont.truetype(os.path.join(img_dir, 'LiberationMono-Bold.ttf'), 16)
+font20b = ImageFont.truetype(os.path.join(img_dir, 'LiberationMono-Bold.ttf'), 20)
+
+# Image paths
+image_path = img_dir  # No change needed, it's just a directory reference
+line_path = os.path.join(img_dir, 'line.png')
+weather_icon_path = icon_dir  # No change needed, it's just a directory reference
+nowtemp_path = os.path.join(img_dir, 'nowtemp.png')
+wave_path = os.path.join(img_dir, 'wave.png')
+metar_bg_path = os.path.join(img_dir, 'metar_bg.png')
+
 scheduler = sched.scheduler(time.time, time.sleep)
-
 
 def font(actual_size: int = 10, display_size: int = 10):
     """
@@ -58,16 +67,6 @@ def get_device(features=[]):
         return None
     if len(devices) == 1:
         return devices[0]
-    # choice = inquirer.prompt([
-    #     inquirer.List('device', message='有多个设备，请选择', choices=[
-    #         (f'{d.manufacturer} {d.product} (SN: {d.serial})', d)
-    #         for d in devices
-    #     ]),
-    # ])
-    # if choice is None:
-    #     return None
-    # return choice['device']
-
 
 # 实例化墨水屏设备，作为全局变量，避免频繁调用get_device方法。
 eink_device = get_device(features=['eink'])
@@ -99,7 +98,7 @@ def get_metar_xml() -> dict:
         dict: A dictionary with station_id as the key and a dictionary of other fields as values.
     """
     config = configparser.ConfigParser()
-    config_file = os.path.join(os.getcwd(), 'config.ini')
+    config_file = os.path.join(base_dir, 'config.ini')
     config.read(config_file)
     airports = config.get('DEFAULT', 'airports')
 
@@ -212,7 +211,7 @@ def get_weather_info() -> dict:
     dict: 包含天气信息的字典。
     """
     config = configparser.ConfigParser()
-    config_file = os.path.join(os.getcwd(), 'config.ini')
+    config_file = os.path.join(base_dir, 'config.ini')
     config.read(config_file)
     key = config.get('DEFAULT', 'key')
     city = config.get('DEFAULT', 'city_id')
@@ -381,7 +380,7 @@ def draw_weather_canvas(x_offset=0, y_offset=186, refresh_interval=30*60) -> Non
     temp_max_offset_x = 64 + (64 - (12 * temp_max_str_len + 8))
 
     # draw weather icon
-    weather_image = Image.open(weather_icon_path + icon + ".png")
+    weather_image = Image.open(os.path.join(weather_icon_path, icon + ".png"))
     canvas.paste(weather_image, (6, 0))
 
     # 将温度值字符串中的每个字符分别加载对应的图片，并粘贴到新图片上
@@ -389,31 +388,31 @@ def draw_weather_canvas(x_offset=0, y_offset=186, refresh_interval=30*60) -> Non
     for min, ch in enumerate(temp_min_str):
         if ch == "-":
             # 加载减号图片
-            minus_image = Image.open(image_path + "minus.png")
+            minus_image = Image.open(os.path.join(image_path, "minus.png"))
             canvas.paste(minus_image, (temp_min_offset_x, tempmin_y_offset))
         else:
             # 加载对应数字图片
-            digit_image = Image.open(image_path + ch + ".png")
+            digit_image = Image.open(os.path.join(image_path, ch + ".png"))
             canvas.paste(digit_image, (temp_min_offset_x +
                          min * 12, tempmin_y_offset))
 
     tempmax_y_offset = 65
     for max, ch in enumerate(temp_max_str):
         if ch == "-":
-            minus_image = Image.open(image_path + "minus.png")
+            minus_image = Image.open(os.path.join(image_path, "minus.png"))
             canvas.paste(minus_image, (temp_max_offset_x, tempmax_y_offset))
         else:
-            digit_image = Image.open(image_path + ch + ".png")
+            digit_image = Image.open(os.path.join(image_path, ch + ".png"))
             canvas.paste(digit_image, (temp_max_offset_x +
                          max * 12, tempmax_y_offset))
 
     tempnow_y_offset = 83
     for now, ch in enumerate(tempnow_str):
         if ch == "-":
-            minus_image = Image.open(image_path + "minus.png")
+            minus_image = Image.open(os.path.join(image_path, "minus.png"))
             canvas.paste(minus_image, (tempnow_offset_x, tempnow_y_offset))
         else:
-            digit_image = Image.open(image_path + ch + ".png")
+            digit_image = Image.open(os.path.join(image_path, ch + ".png"))
             canvas.paste(digit_image, (tempnow_offset_x +
                          now * 12, tempnow_y_offset))
 
@@ -422,7 +421,7 @@ def draw_weather_canvas(x_offset=0, y_offset=186, refresh_interval=30*60) -> Non
     draw_text_on_canvas(wind, canvas, font20, center=False, x_offset=65, y_offset=15)
 
     # 将温度单位图片粘贴到新图片上
-    temp_unit_image = Image.open(image_path + "temp_unit.png")
+    temp_unit_image = Image.open(os.path.join(image_path, "temp_unit.png"))
     canvas.paste(temp_unit_image, (tempnow_offset_x +
                  now * 12 + 12, tempnow_y_offset))
 
@@ -544,5 +543,4 @@ if __name__ == '__main__':
     draw_calendar_canvas(0,130)
     draw_weather_canvas(0,185)
     # draw_clock_canvas(0,80)
-    # draw_hw_canvas()
     scheduler.run()
