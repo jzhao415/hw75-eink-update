@@ -101,9 +101,10 @@ def get_metar_xml() -> dict:
     config = configparser.ConfigParser()
     config_file = os.path.join(os.getcwd(), 'config.ini')
     config.read(config_file)
+    airports = config.get('DEFAULT', 'airports')
 
     params = {
-        'ids': 'KBWI,KIAD,KDCA',
+        'ids': airports,
         'format': 'xml',
         'taf': 'false',
         'hours': 2,
@@ -145,6 +146,16 @@ def parse_metar_response(xml_string):
         if obs_time:
             dt = datetime.fromisoformat(obs_time.replace("Z", "+00:00"))
             obs_time_str = dt.strftime("%d%H%MZ")
+        # Convert dew point temperature to int to save screen space
+        dewp = metar_element.findtext("dewpoint_c")
+        dewp_str = ""
+        if dewp is not None:
+            dewp_str = f"{int(float(dewp))}"
+
+        temp = metar_element.findtext("temp_c")
+        temp_str = ""
+        if temp is not None:
+            temp_str = f"{int(float(temp))}"
 
         wdir = metar_element.findtext("wind_dir_degrees")
         wspd = metar_element.findtext("wind_speed_kt")
@@ -169,10 +180,10 @@ def parse_metar_response(xml_string):
         metar_data = {
             "raw_text": metar_element.findtext("raw_text"),
             "observation_time": obs_time_str,
-            "temp_c": metar_element.findtext("temp_c"),
-            "dewpoint_c": metar_element.findtext("dewpoint_c"),
+            "temp_c": temp_str,
+            "dewpoint_c": dewp_str,
             "wind": wind_info,
-            "visibility_statute_mi": metar_element.findtext("visibility_statute_mi") + " ms",
+            "visibility_statute_mi": metar_element.findtext("visibility_statute_mi") + "ms",
             "altim_in_hg": metar_element.findtext("altim_in_hg"),
             "sea_level_pressure_mb": metar_element.findtext("sea_level_pressure_mb"),
             "auto_station": metar_element.find("quality_control_flags/auto_station").text == "TRUE",
@@ -338,7 +349,6 @@ def draw_hw_canvas(x_offset=16, y_offset=0, refresh_interval=10) -> None:
     update_eink(canvas, x=x_offset, y=y_offset,partial=True)
     scheduler.enter(refresh_interval, 1, draw_hw_canvas)
 
-
 def draw_weather_canvas(x_offset=0, y_offset=186, refresh_interval=30*60) -> None:
     """
     查询天气数据并渲染。
@@ -462,15 +472,15 @@ def draw_metar_canvas(x_offset=0, y_offset=0):
     visib = metar['visibility_statute_mi']
     category = metar['flight_category']
     cloud = metar['cloud']
-    img_draw.text((4,5), icao, font=font16b, fill=0x00, align='center') 
+    img_draw.text((4,7), icao, font=font16b, fill=0x00, align='center') 
     img_draw.text((72,10), obs_time, font=font12b, fill=0x00, align='center') 
-    img_draw.text((25,33), wind, font=font16b, fill=0x00, align='center')
+    img_draw.text((23,33), wind, font=font16b, fill=0x00, align='center')
     img_draw.text((16, 60), temp, font=font12b, fill=0x00, align='center')
-    img_draw.text((51, 60), dewp, font=font12b, fill=0x00, align='center')
-    img_draw.text((98, 60), altim, font=font12b, fill=0x00, align='center')
+    img_draw.text((55, 60), dewp, font=font12b, fill=0x00, align='center')
+    img_draw.text((95, 60), altim, font=font12b, fill=0x00, align='center')
     img_draw.text((25, 86), visib, font=font12b, fill=0x00, align='center')
-    img_draw.text((90, 82), category, font=font16b, fill=0x00, align='center')
-    img_draw.text((25, 110), cloud, font=font12b, fill=0x00, align='center')
+    img_draw.text((85, 82), category, font=font16b, fill=0x00, align='center')
+    img_draw.text((22, 110), cloud, font=font12b, fill=0x00, align='center')
 
     update_eink(canvas, x=x_offset, y=y_offset, partial=True)
     scheduler.enter(60*5, 1, draw_metar_canvas)

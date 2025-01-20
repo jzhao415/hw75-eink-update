@@ -3,9 +3,9 @@
 
 a = Analysis(
     ['source\\UpdateInk.pyw'],
-    pathex=[],
+    pathex=['..'],
     binaries=[],
-    datas=[],
+    datas=[('icon', 'icon'), ('img', 'img')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
