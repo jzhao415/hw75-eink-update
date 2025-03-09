@@ -354,7 +354,7 @@ def draw_weather_canvas(x_offset=0, y_offset=186, refresh_interval=30*60) -> Non
     默认出现在屏幕底部，可通过指定x_offset与y_offset来调整渲染位置。
     每半小时查询并更新一次天气情况。因为是刷新间隔最长的方法，默认使用全局刷新来清理屏幕。
     """
-    print("更新天气数据……")
+    print("Updating Weather……")
     canvas = Image.new('1', (128, 100), 0xFF)
     w_info = get_weather_info()
 
@@ -525,7 +525,7 @@ def draw_calendar_canvas(x_offset=0, y_offset=180):
 
 
 def clean_screen(x=128, y=296, x_offset=0, y_offset=0):
-    print("初始化屏幕……")
+    print("Initialize Screen……")
     all_white = Image.new("1", (x, y), color=0xFF)
     all_black = Image.new("1", (x, y), color=0x00)
     update_eink(all_black, x=x_offset, y=y_offset)
